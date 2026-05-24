@@ -118,6 +118,14 @@ class PickleabilityTestCase(TestCase):
             Event.objects.select_related('group').order_by('title').values_list('title', 'group__name')
         )
 
+    def test_pickle_query_restores_iterable_class(self):
+        # Pickling only the query object and assigning it to a new queryset
+        # must preserve the ValuesIterable so results come back as dicts (#13406).
+        qs = Happening.objects.values('name')
+        reloaded = Happening.objects.all()
+        reloaded.query = pickle.loads(pickle.dumps(qs.query))
+        self.assertIsInstance(list(reloaded)[0], dict)
+
     def test_pickle_prefetch_related_idempotence(self):
         g = Group.objects.create(name='foo')
         groups = Group.objects.prefetch_related('event_set')

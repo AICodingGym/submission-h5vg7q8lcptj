@@ -211,6 +211,8 @@ class QuerySet:
     @query.setter
     def query(self, value):
         self._query = value
+        if value.values_select:
+            self._iterable_class = ValuesIterable
 
     def as_manager(cls):
         # Address the circular dependency between `Queryset` and `Manager`.
