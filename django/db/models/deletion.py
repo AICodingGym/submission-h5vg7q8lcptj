@@ -232,9 +232,29 @@ class Collector:
         """
         Get a QuerySet of objects related to `objs` via the relation `related`.
         """
-        return related.related_model._base_manager.using(self.using).filter(
+        related_model = related.related_model
+        qs = related_model._base_manager.using(self.using).filter(
             **{"%s__in" % related.field.name: objs}
         )
+        if not (
+            signals.pre_delete.has_listeners(related_model) or
+            signals.post_delete.has_listeners(related_model)
+        ):
+            # When no delete signals are connected for this model, restrict the
+            # SELECT to only the fields the deletion machinery needs:
+            #   - the pk (identity, deletion, sorting)
+            #   - any field that another model's FK points to via to_field
+            #     (needed as filter values when collecting further cascades)
+            # Fetching only these fields avoids touching large or corrupt
+            # columns (e.g. a TextField with invalid UTF-8) that would cause
+            # errors even though delete doesn't need those values.
+            field_names = [related_model._meta.pk.name]
+            for related_rel in get_candidate_relations_to_delete(related_model._meta):
+                for _, rhs_field in related_rel.field.related_fields:
+                    if rhs_field.name not in field_names:
+                        field_names.append(rhs_field.name)
+            qs = qs.only(*field_names)
+        return qs
 
     def instances_with_model(self):
         for model, instances in self.data.items():
